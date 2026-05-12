@@ -1,0 +1,105 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Politician {
+  id                 String          @id @default(uuid())
+  name               String          @unique
+  currentRole        String
+  partyAffiliation   String
+  transparencyScore  Float           @default(0)
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+
+  declarations       Declaration[]
+  alerts             WatchdogAlert[]
+}
+
+model Declaration {
+  id                     String        @id @default(uuid())
+  year                   Int
+  submissionDate         DateTime
+  totalAssets            Float         @default(0)
+  totalLiabilities       Float         @default(0)
+  totalHouseholdIncome   Float         @default(0)
+
+  politicianId           String
+  politician             Politician    @relation(fields: [politicianId], references: [id])
+
+  assets                 Asset[]
+  liabilities            Liability[]
+  incomeSources          IncomeSource[]
+}
+
+model Asset {
+  id               String          @id @default(uuid())
+  category         AssetCategory
+  description      String
+  origin           String
+  acquisitionYear  Int
+  declaredValue    Float
+  ownership        OwnershipType
+
+  declarationId    String
+  declaration      Declaration     @relation(fields: [declarationId], references: [id])
+}
+
+model Liability {
+  id               String        @id @default(uuid())
+  creditor         String
+  purpose          String
+  totalAmount      Float
+  remainingAmount  Float
+  ownership        OwnershipType
+
+  declarationId    String
+  declaration      Declaration   @relation(fields: [declarationId], references: [id])
+}
+
+model IncomeSource {
+  id             String        @id @default(uuid())
+  sourceName     String
+  annualAmount   Float
+  ownership      OwnershipType
+
+  declarationId  String
+  declaration    Declaration   @relation(fields: [declarationId], references: [id])
+}
+
+model WatchdogAlert {
+  id           String        @id @default(uuid())
+  source       String
+  severity     AlertSeverity
+  title        String
+  description  String
+  url          String
+  isResolved   Boolean       @default(false)
+
+  politicianId String
+  politician   Politician    @relation(fields: [politicianId], references: [id])
+}
+
+enum AssetCategory {
+  REAL_ESTATE
+  VEHICLE
+  BUSINESS_EQUITY
+  CASH
+  CRYPTO
+}
+
+enum OwnershipType {
+  DECLARANT
+  SPOUSE
+  JOINT
+  CHILDREN
+}
+
+enum AlertSeverity {
+  CRITICAL
+  WARNING
+  INFO
+}
