@@ -1,19 +1,19 @@
 import { fetchDeclarationBuffer } from "./services/apkFetcher.js";
 import { parsePdfDeclaration } from "./services/pdfParserAgent.js";
-import prisma from "./lib/prisma.js";
+import { prisma } from "./lib/prisma.js";
 
 // Helper function to pause between scrapes
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const targetCabinet = [
-  "Albin Kurti", // Kryeministër
-  "Besnik Bislimi", // Zëvendëskryeministër
-  "Donika Gërvalla-Schwarz", // Punë të Jashtme
-  "Xhelal Sveçla", // Punë të Brendshme
+  "Albin Kurti", // Kryeministï¿½r
+  "Besnik Bislimi", // Zï¿½vendï¿½skryeministï¿½r
+  "Donika Gï¿½rvalla-Schwarz", // Punï¿½ tï¿½ Jashtme
+  "Xhelal Sveï¿½la", // Punï¿½ tï¿½ Brendshme
   "Hekuran Murati", // Financave
-  "Albulena Haxhiu", // Drejtësisë
-  "Arben Vitia", // Shëndetësisë
-  "Liburn Aliu" // Mjedisit dhe Infrastrukturës
+  "Albulena Haxhiu", // Drejtï¿½sisï¿½
+  "Arben Vitia", // Shï¿½ndetï¿½sisï¿½
+  "Liburn Aliu" // Mjedisit dhe Infrastrukturï¿½s
 ];
 
 async function seedCabinet() {

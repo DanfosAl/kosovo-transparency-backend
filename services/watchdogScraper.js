@@ -1,5 +1,5 @@
 import Parser from "rss-parser";
-import prisma from "../lib/prisma.js";
+import { prisma } from "../lib/prisma.js";
 
 const parser = new Parser();
 const NEWS_FEED_URL = "https://telegrafi.com/lajme/feed/"; // Real RSS feed example
