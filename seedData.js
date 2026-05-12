@@ -1,66 +1,67 @@
+﻿import "dotenv/config";
 import { fetchDeclarationBuffer } from "./services/apkFetcher.js";
 import { parsePdfDeclaration } from "./services/pdfParserAgent.js";
 import { prisma } from "./lib/prisma.js";
 
-// Helper function to pause between scrapes
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const targetCabinet = [
-  "Albin Kurti", // Kryeminist�r
-  "Besnik Bislimi", // Z�vend�skryeminist�r
-  "Donika G�rvalla-Schwarz", // Pun� t� Jashtme
-  "Xhelal Sve�la", // Pun� t� Brendshme
-  "Hekuran Murati", // Financave
-  "Albulena Haxhiu", // Drejt�sis�
-  "Arben Vitia", // Sh�ndet�sis�
-  "Liburn Aliu" // Mjedisit dhe Infrastruktur�s
+  { name: "Albin Kurti",             role: "Kryeministër",                            party: "Lëvizja Vetëvendosje" },
+  { name: "Besnik Bislimi",          role: "Zëvendëskryeministër",                    party: "Lëvizja Vetëvendosje" },
+  { name: "Donika Gërvalla Schwarz", role: "Ministre e Punëve të Jashtme",            party: "Lëvizja Vetëvendosje" },
+  { name: "Xhelal Sveçla",           role: "Ministër i Punëve të Brendshme",          party: "Lëvizja Vetëvendosje" },
+  { name: "Hekuran Murati",          role: "Ministër i Financave",                    party: "Lëvizja Vetëvendosje" },
+  { name: "Albulena Haxhiu",         role: "Ministre e Drejtësisë",                   party: "Lëvizja Vetëvendosje" },
+  { name: "Arben Vitia",             role: "Ministër i Shëndetësisë",                 party: "Lëvizja Vetëvendosje" },
+  { name: "Liburn Aliu",             role: "Ministër i Mjedisit dhe Infrastrukturës", party: "Lëvizja Vetëvendosje" },
 ];
 
 async function seedCabinet() {
-  console.log("?? Starting Cabinet Extraction Protocol...");
+  console.log("🚀 Starting Cabinet Extraction Protocol...");
 
-  for (const name of targetCabinet) {
+  for (const { name, role, party } of targetCabinet) {
     try {
-      console.log(`\n?? Searching for: ${name} (2024)...`);
-      
-      // 1. Fetch PDF from the portal
-      const { buffer, fileName } = await fetchDeclarationBuffer(name, 2024);
-      
-      // 2. Parse with Gemini 2.5 Flash
-      console.log(`?? Parsing PDF with AI for ${name}...`);
-      const payload = await parsePdfDeclaration(buffer, fileName);
+      console.log(`\n🔍 Searching for: ${name} (2024)...`);
 
-      // 3. Ensure Politician exists in Database
-      let politician = await prisma.politician.findFirst({
-        where: { name: name }
+      // 1. Upsert Politician (create if not exists)
+      const politician = await prisma.politician.upsert({
+        where: { name },
+        update: {},
+        create: { name, currentRole: role, partyAffiliation: party, transparencyScore: 100 },
       });
 
-      if (!politician) {
-        politician = await prisma.politician.create({
-          data: { name: name, transparencyScore: 100 }
-        });
-        console.log(`?? Created new profile for ${name} (ID: ${politician.id})`);
+      // 2. Skip if declaration for this year already saved (before any API calls)
+      const existing = await prisma.declaration.findFirst({
+        where: { politicianId: politician.id, year: 2024 },
+      });
+      if (existing) {
+        console.log(`⏭️  Declaration already exists for ${name} (2024), skipping.`);
+        continue;
       }
 
-      // 4. Save the Declaration
-      const declaration = await prisma.declaration.create({
-        data: { 
-          politicianId: politician.id, 
-          ...payload 
-        },
+      // 3. Fetch PDF from the APK portal
+      const { buffer, fileName } = await fetchDeclarationBuffer(name, 2024);
+
+      // 4. Parse with Gemini 2.5 Flash
+      console.log(`🤖 Parsing PDF with AI for ${name}...`);
+      const payload = await parsePdfDeclaration(buffer, fileName);
+
+      // 5. Save Declaration
+      await prisma.declaration.create({
+        data: { politicianId: politician.id, ...payload },
       });
 
-      console.log(`? Successfully saved declaration for ${name}!`);
-      
-      // 5. Be polite to the servers (Wait 10 seconds before the next one)
-      console.log("? Waiting 10 seconds to avoid rate limits...");
+      console.log(`✅ Successfully saved declaration for ${name}!`);
+      console.log("⏳ Waiting 10 seconds...");
       await delay(10000);
 
     } catch (error) {
-      console.error(`? Failed to process ${name}:`, error.message);
+      console.error(`❌ Failed to process ${name}:`, error.message);
     }
   }
-  console.log("\n?? Cabinet Extraction Complete!");
+
+  console.log("\n🏁 Cabinet Extraction Complete!");
+  await prisma.$disconnect();
 }
 
 seedCabinet();
