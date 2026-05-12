@@ -1,112 +1,66 @@
-import "dotenv/config";
 import { fetchDeclarationBuffer } from "./services/apkFetcher.js";
 import { parsePdfDeclaration } from "./services/pdfParserAgent.js";
-import { prisma } from "./lib/prisma.js";
+import prisma from "./lib/prisma.js";
 
-const YEAR = 2024;
+// Helper function to pause between scrapes
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-/**
- * Seed politicians must exist before declarations can be created (foreign key).
- * We upsert on name so re-running the script is idempotent.
- * These are placeholder role/party values â€” update them as needed.
- */
-const SEED_POLITICIANS = [
-  {
-    name: "Albin Kurti",
-    currentRole: "KryeministÃ«r",
-    partyAffiliation: "LÃ«vizja VetÃ«vendosje",
-  },
-  {
-    name: "Vjosa Osmani",
-    currentRole: "Presidente",
-    partyAffiliation: "LÃ«vizja VetÃ«vendosje",
-  },
-  {
-    name: "Xhelal SveÃ§la",
-    currentRole: "MinistÃ«r i PunÃ«ve tÃ« Brendshme",
-    partyAffiliation: "LÃ«vizja VetÃ«vendosje",
-  },
+const targetCabinet = [
+  "Albin Kurti", // Kryeministër
+  "Besnik Bislimi", // Zëvendëskryeministër
+  "Donika Gërvalla-Schwarz", // Punë të Jashtme
+  "Xhelal Sveçla", // Punë të Brendshme
+  "Hekuran Murati", // Financave
+  "Albulena Haxhiu", // Drejtësisë
+  "Arben Vitia", // Shëndetësisë
+  "Liburn Aliu" // Mjedisit dhe Infrastrukturës
 ];
 
-async function seed() {
-  console.log("=== Kosovo Transparency Seed ===\n");
+async function seedCabinet() {
+  console.log("?? Starting Cabinet Extraction Protocol...");
 
-  for (const seedData of SEED_POLITICIANS) {
-    const { name } = seedData;
-    console.log(`[${name}] Starting...`);
-
+  for (const name of targetCabinet) {
     try {
-      // ------------------------------------------------------------------
-      // 1. Upsert the politician so the script is safely re-runnable
-      // ------------------------------------------------------------------
-      const politician = await prisma.politician.upsert({
-        where: { name },
-        update: {},
-        create: {
-          name: seedData.name,
-          currentRole: seedData.currentRole,
-          partyAffiliation: seedData.partyAffiliation,
-          transparencyScore: 0,
-        },
+      console.log(`\n?? Searching for: ${name} (2024)...`);
+      
+      // 1. Fetch PDF from the portal
+      const { buffer, fileName } = await fetchDeclarationBuffer(name, 2024);
+      
+      // 2. Parse with Gemini 2.5 Flash
+      console.log(`?? Parsing PDF with AI for ${name}...`);
+      const payload = await parsePdfDeclaration(buffer, fileName);
+
+      // 3. Ensure Politician exists in Database
+      let politician = await prisma.politician.findFirst({
+        where: { name: name }
       });
 
-      console.log(`[${name}] Politician upserted â€” id: ${politician.id}`);
-
-      // ------------------------------------------------------------------
-      // 2. Skip if a declaration for this year already exists
-      // ------------------------------------------------------------------
-      const existing = await prisma.declaration.findFirst({
-        where: { politicianId: politician.id, year: YEAR },
-        select: { id: true },
-      });
-
-      if (existing) {
-        console.log(`[${name}] Declaration for ${YEAR} already exists (id: ${existing.id}), skipping.\n`);
-        continue;
+      if (!politician) {
+        politician = await prisma.politician.create({
+          data: { name: name, transparencyScore: 100 }
+        });
+        console.log(`?? Created new profile for ${name} (ID: ${politician.id})`);
       }
 
-      // ------------------------------------------------------------------
-      // 3. Scrape the PDF from the APK registry
-      // ------------------------------------------------------------------
-      console.log(`[${name}] Fetching PDF from APK registry for year ${YEAR}...`);
-      const { buffer, fileName } = await fetchDeclarationBuffer(name, YEAR);
-      console.log(`[${name}] PDF downloaded â€” ${buffer.length} bytes, file: ${fileName}`);
-
-      // ------------------------------------------------------------------
-      // 4. Parse the PDF with the Gemini AI agent
-      // ------------------------------------------------------------------
-      console.log(`[${name}] Sending PDF to Gemini parser...`);
-      const declarationPayload = await parsePdfDeclaration(buffer, fileName);
-      console.log(`[${name}] Gemini parsed ${declarationPayload.assets.create.length} asset(s), ` +
-        `${declarationPayload.liabilities.create.length} liability(ies), ` +
-        `${declarationPayload.incomeSources.create.length} income source(s).`);
-
-      // ------------------------------------------------------------------
-      // 5. Persist to the database
-      // ------------------------------------------------------------------
+      // 4. Save the Declaration
       const declaration = await prisma.declaration.create({
-        data: {
-          politicianId: politician.id,
-          ...declarationPayload,
+        data: { 
+          politicianId: politician.id, 
+          ...payload 
         },
       });
 
-      console.log(`[${name}] Declaration saved â€” id: ${declaration.id}, year: ${declaration.year}`);
-      console.log(`[${name}] âœ“ Done.\n`);
+      console.log(`? Successfully saved declaration for ${name}!`);
+      
+      // 5. Be polite to the servers (Wait 10 seconds before the next one)
+      console.log("? Waiting 10 seconds to avoid rate limits...");
+      await delay(10000);
+
     } catch (error) {
-      // Log and continue â€” one failure should not abort the whole seed run
-      console.error(`[${name}] âœ— Failed: ${error.message}\n`);
+      console.error(`? Failed to process ${name}:`, error.message);
     }
   }
-
-  console.log("=== Seed complete ===");
+  console.log("\n?? Cabinet Extraction Complete!");
 }
 
-seed()
-  .catch((error) => {
-    console.error("Fatal seed error:", error);
-    process.exit(1);
-  })
-  .finally(async () => {
-    await prisma.$disconnect();
-  });
+seedCabinet();

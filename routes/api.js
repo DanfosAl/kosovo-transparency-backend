@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { prisma } from "../lib/prisma.js";
+import { scanForAlerts } from "../services/watchdogScraper.js";
 
 const router = Router();
 
@@ -122,6 +123,40 @@ router.get("/politicians/:id/comparison", async (req, res) => {
   } catch (error) {
     console.error("[GET /politicians/:id/comparison]", error);
     res.status(500).json({ error: "Failed to fetch comparison data." });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Endpoint 4 — GET /api/watchdog/scan
+// Trigger the watchdog scanner (fire-and-forget so request doesn't timeout)
+// ---------------------------------------------------------------------------
+router.get("/watchdog/scan", async (req, res) => {
+  try {
+    scanForAlerts(); // intentionally not awaited
+    res.json({ message: "Watchdog scan initiated in the background." });
+  } catch (error) {
+    console.error("[GET /watchdog/scan]", error);
+    res.status(500).json({ error: "Failed to start scanner." });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Endpoint 5 — GET /api/alerts
+// Serve the 10 most recent watchdog alerts to the React frontend
+// ---------------------------------------------------------------------------
+router.get("/alerts", async (req, res) => {
+  try {
+    const alerts = await prisma.watchdogAlert.findMany({
+      orderBy: { createdAt: "desc" },
+      take: 10,
+      include: {
+        politician: { select: { name: true } },
+      },
+    });
+    res.json(alerts);
+  } catch (error) {
+    console.error("[GET /alerts]", error);
+    res.status(500).json({ error: "Failed to fetch alerts." });
   }
 });
 
